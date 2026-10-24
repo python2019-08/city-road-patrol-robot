@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<!--
+  Traffic-cone shaped body (0.74 m tall, orange with reflective bands),
+  curved LED warning screen, red/blue strobes and the directional speaker.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="patrolbot_body">
+
+    <!-- ===================== cone shell ===================== -->
+    <joint name="body_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="body_link"/>
+      <origin xyz="0 0 ${body_bottom_z}" rpy="0 0 0"/>
+    </joint>
+
+    <link name="body_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/body_cone.stl"/>
+        </geometry>
+        <material name="traffic_orange"/>
+      </visual>
+
+      <!-- three reflective bands, meshes already match the cone slope -->
+      <visual>
+        <origin xyz="0 0 ${band_low_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/band_low.stl"/>
+        </geometry>
+        <material name="reflective_white"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 ${band_mid_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/band_mid.stl"/>
+        </geometry>
+        <material name="reflective_white"/>
+      </visual>
+      <visual>
+        <origin xyz="0 0 ${band_high_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/band_high.stl"/>
+        </geometry>
+        <material name="reflective_white"/>
+      </visual>
+
+      <!-- collision: three stacked cylinders approximating the cone.
+           Kept inside the visual shell and clear of the wheels. -->
+      <collision>
+        <origin xyz="0 0 0.130" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.155" length="0.260"/>
+        </geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 0.380" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.122" length="0.240"/>
+        </geometry>
+      </collision>
+      <collision>
+        <origin xyz="0 0 0.620" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.107" length="0.240"/>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <origin xyz="0 0 0.300" rpy="0 0 0"/>
+        <mass value="${mass_body}"/>
+        <inertia ixx="${mass_body * (3.0*0.12*0.12 + body_height*body_height) / 12.0}"
+                 ixy="0" ixz="0"
+                 iyy="${mass_body * (3.0*0.12*0.12 + body_height*body_height) / 12.0}"
+                 iyz="0"
+                 izz="${mass_body * 0.12 * 0.12 / 2.0}"/>
+      </inertial>
+    </link>
+
+    <!-- ===================== curved LED warning screen ===================== -->
+    <!-- both mesh files are centred on this frame -->
+    <joint name="led_bezel_joint" type="fixed">
+      <parent link="body_link"/>
+      <child link="led_bezel_link"/>
+      <origin xyz="${screen_center_radius} 0 ${screen_center_z}" rpy="0 0 0"/>
+    </joint>
+
+    <link name="led_bezel_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/led_bezel.stl"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_led_bezel}" x="0.020" y="0.160" z="0.400" xyz="0 0 0"/>
+    </link>
+
+    <joint name="led_screen_joint" type="fixed">
+      <parent link="led_bezel_link"/>
+      <child link="led_screen_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="led_screen_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://patrolbot_description/meshes/led_screen.stl"/>
+        </geometry>
+        <material name="led_red"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_led_screen}" x="0.008" y="0.150" z="0.360" xyz="0 0 0"/>
+    </link>
+
+    <!-- ===================== red / blue strobes ===================== -->
+    <!-- Low-profile flush lights on the cone top.  Their 0.875 m top edge
+         stays below the lidar scan plane (0.882 m), otherwise they would
+         cut a shadow into the lidar's rear quadrants. -->
+    <xacro:macro name="patrolbot_strobe" params="name y material">
+      <joint name="${name}_joint" type="fixed">
+        <parent link="body_link"/>
+        <child link="${name}_link"/>
+        <origin xyz="0 ${y} ${body_height + 0.005}" rpy="0 0 0"/>
+      </joint>
+      <link name="${name}_link">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <box size="0.050 0.040 0.020"/>
+          </geometry>
+          <material name="${material}"/>
+        </visual>
+        <xacro:inertial_box mass="${mass_strobe}" x="0.050" y="0.040" z="0.020" xyz="0 0 0"/>
+      </link>
+    </xacro:macro>
+
+    <xacro:patrolbot_strobe name="strobe_red"  y="0.075"  material="strobe_red"/>
+    <xacro:patrolbot_strobe name="strobe_blue" y="-0.075" material="strobe_blue"/>
+
+    <!-- ===================== directional speaker ===================== -->
+    <!-- horn on the front face, between the LED screen and the middle band -->
+    <joint name="speaker_joint" type="fixed">
+      <parent link="body_link"/>
+      <child link="speaker_link"/>
+      <origin xyz="0.132 0 0.555" rpy="0 0 0"/>
+    </joint>
+
+    <link name="speaker_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry>
+          <cylinder radius="0.035" length="0.050"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <!-- horn mouth -->
+      <visual>
+        <origin xyz="0.028 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry>
+          <cylinder radius="0.038" length="0.006"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 ${pi/2} 0"/>
+        <mass value="${mass_speaker}"/>
+        <inertia ixx="${mass_speaker * 0.035 * 0.035 / 2.0}"
+                 ixy="0" ixz="0"
+                 iyy="${mass_speaker * (3.0*0.035*0.035 + 0.050*0.050) / 12.0}"
+                 iyz="0"
+                 izz="${mass_speaker * (3.0*0.035*0.035 + 0.050*0.050) / 12.0}"/>
+      </inertial>
+    </link>
+
+  </xacro:macro>
+
+</robot>

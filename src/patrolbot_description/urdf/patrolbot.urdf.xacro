@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!--
+  Top-level entry point for the smart patrol / warning robot.
+
+  Usage:
+    xacro patrolbot.urdf.xacro > /tmp/patrolbot.urdf
+    xacro patrolbot.urdf.xacro lidar_samples:=360 controllers_file:=/abs/path.yaml
+
+  The model targets ROS 2 Jazzy + Gazebo Harmonic.  See README.md in this
+  directory for the world plugins and bridge topics the simulation needs.
+-->
+<robot name="patrolbot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================== options ===================== -->
+  <xacro:arg name="controllers_file"
+             default="$(find patrolbot_description)/config/ros2_control.yaml"/>
+
+  <xacro:arg name="lidar_samples" default="720"/>
+  <xacro:arg name="lidar_max_range" default="100.0"/>
+  <xacro:arg name="lidar_update_rate" default="10.0"/>
+
+  <xacro:arg name="imu_update_rate" default="100.0"/>
+  <xacro:arg name="gnss_update_rate" default="10.0"/>
+
+  <xacro:arg name="panorama_width" default="1920"/>
+  <xacro:arg name="panorama_height" default="1080"/>
+  <xacro:arg name="panorama_rate" default="25.0"/>
+  <xacro:arg name="panorama_hfov" default="2.4"/>
+
+  <xacro:arg name="gimbal_camera_width" default="1920"/>
+  <xacro:arg name="gimbal_camera_height" default="1080"/>
+  <xacro:arg name="gimbal_camera_rate" default="25.0"/>
+  <xacro:arg name="gimbal_camera_hfov" default="0.6"/>
+
+  <!-- ===================== includes ===================== -->
+  <xacro:include filename="common.xacro"/>
+  <xacro:include filename="chassis.xacro"/>
+  <xacro:include filename="body.xacro"/>
+  <xacro:include filename="mast_gimbal.xacro"/>
+  <xacro:include filename="sensors.xacro"/>
+  <xacro:include filename="ros2_control.xacro"/>
+
+  <!-- ===================== robot ===================== -->
+  <xacro:patrolbot_chassis/>
+  <xacro:patrolbot_body/>
+  <xacro:patrolbot_mast_gimbal/>
+  <xacro:patrolbot_sensors/>
+  <xacro:patrolbot_ros2_control/>
+
+</robot>

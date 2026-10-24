@@ -1,0 +1,76 @@
+# ros2_control configuration for the patrol robot (simulation and physical
+# hardware share this file; only the hardware plugin in the URDF changes).
+#
+# Four wheels, two motors: diff_drive_controller takes two wheel names per
+# side and averages their state, so the front/rear wheels of one side act as
+# a single virtual wheel.
+#
+# Topics (default controller namespace):
+#   /diff_drive_controller/cmd_vel   geometry_msgs/msg/TwistStamped  (input)
+#   /diff_drive_controller/odom      nav_msgs/msg/Odometry           (output)
+#   /joint_states                    sensor_msgs/msg/JointState
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["front_left_wheel_joint", "rear_left_wheel_joint"]
+    right_wheel_names: ["front_right_wheel_joint", "rear_right_wheel_joint"]
+
+    wheel_separation: 0.360
+    wheel_radius: 0.080
+
+    # calibration multipliers, 1.0 for the nominal simulation geometry
+    wheel_separation_multiplier: 1.0
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
+
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    pose_covariance_diagonal: [0.001, 0.001, 0.0, 0.0, 0.0, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.0, 0.0, 0.0, 0.01]
+
+    # use wheel position feedback from the simulation; on the real robot
+    # switch to velocity feedback if the encoders are only read as rates
+    open_loop: false
+    position_feedback: true
+
+    enable_odom_tf: true
+    cmd_vel_timeout: 0.5
+    publish_limited_velocity: false
+    velocity_rolling_window_size: 10
+    publish_rate: 50.0
+
+    # matching the 0-3 m/s requirement; reverse is slower and the angular
+    # limits reflect the 0.36 m track.
+    #
+    # Sign convention of Jazzy's diff_drive_controller (validated at load
+    # time): *_max_acceleration >= 0, *_max_deceleration <= 0,
+    # *_max_acceleration_reverse <= 0 and *_max_deceleration_reverse >= 0.
+    # "max_deceleration" is therefore a negative acceleration.
+    linear.x.has_velocity_limits: true
+    linear.x.max_velocity: 3.0
+    linear.x.min_velocity: -0.6
+    linear.x.has_acceleration_limits: true
+    linear.x.max_acceleration: 1.0
+    linear.x.max_deceleration: -1.5
+    linear.x.max_acceleration_reverse: -0.6
+    linear.x.max_deceleration_reverse: 1.0
+    linear.x.has_jerk_limits: false
+
+    angular.z.has_velocity_limits: true
+    angular.z.max_velocity: 1.5
+    angular.z.min_velocity: -1.5
+    angular.z.has_acceleration_limits: true
+    angular.z.max_acceleration: 2.0
+    angular.z.max_deceleration: -3.0
+    angular.z.max_acceleration_reverse: -2.0
+    angular.z.max_deceleration_reverse: 3.0
+    angular.z.has_jerk_limits: false

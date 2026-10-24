@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<!--
+  Electric telescopic mast (three 0.525 m stages, head 0.825 m -> 2.40 m)
+  and the three-axis stabilised gimbal on top.  The gimbal camera sits
+  2.5175 m above the ground when the mast is fully extended.
+
+  The mast and gimbal joints are intentionally NOT exposed to ros2_control:
+  they stay passive (damping + friction hold them in place) so a fresh
+  simulation does not command them.  Attach actuators later if the lifting
+  and stabilisation behaviour needs to be simulated.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="patrolbot_mast_gimbal">
+
+    <!-- ===================== mast base ===================== -->
+    <joint name="mast_base_joint" type="fixed">
+      <parent link="body_link"/>
+      <child link="mast_base_link"/>
+      <origin xyz="${mast_base_x} 0 ${mast_base_z - body_bottom_z}" rpy="0 0 0"/>
+    </joint>
+
+    <link name="mast_base_link">
+      <!-- collar, sunk through the cone top.  The collar top (0.870 m)
+           stays below the lidar scan plane (0.882 m) so it never casts a
+           shadow into the lidar when the mast is collapsed. -->
+      <visual>
+        <origin xyz="0 0 0.005" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.045" length="0.080"/>
+        </geometry>
+        <material name="aluminium"/>
+      </visual>
+      <xacro:inertial_cylinder mass="${mass_mast_base}" radius="0.045" length="0.080"
+                               xyz="0 0 0.005"/>
+    </link>
+
+    <!-- ===================== telescopic stages ===================== -->
+    <!-- Each stage frame sits at its own top; the tube extends downwards so
+         it stays inside the previous stage when collapsed. -->
+    <xacro:macro name="patrolbot_mast_stage" params="index parent radius mass travel">
+      <joint name="mast_lift_${index}_joint" type="prismatic">
+        <parent link="${parent}"/>
+        <child link="mast_stage${index}_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="0.0" upper="${travel}" effort="200.0" velocity="0.20"/>
+        <dynamics damping="50.0" friction="25.0"/>
+      </joint>
+
+      <link name="mast_stage${index}_link">
+        <visual>
+          <origin xyz="0 0 ${-mast_tube_length/2.0}" rpy="0 0 0"/>
+          <geometry>
+            <cylinder radius="${radius}" length="${mast_tube_length}"/>
+          </geometry>
+          <material name="aluminium"/>
+        </visual>
+        <xacro:inertial_cylinder mass="${mass}" radius="${radius}" length="${mast_tube_length}"
+                                 xyz="0 0 ${-mast_tube_length/2.0}"/>
+      </link>
+    </xacro:macro>
+
+    <xacro:patrolbot_mast_stage index="1" parent="mast_base_link"
+                                radius="${mast_stage1_radius}" mass="${mass_mast_stage1}"
+                                travel="${mast_stage_travel}"/>
+    <xacro:patrolbot_mast_stage index="2" parent="mast_stage1_link"
+                                radius="${mast_stage2_radius}" mass="${mass_mast_stage2}"
+                                travel="${mast_stage_travel}"/>
+    <xacro:patrolbot_mast_stage index="3" parent="mast_stage2_link"
+                                radius="${mast_stage3_radius}" mass="${mass_mast_stage3}"
+                                travel="${mast_stage_travel}"/>
+
+    <!-- ===================== three-axis gimbal ===================== -->
+    <joint name="gimbal_yaw_joint" type="revolute">
+      <parent link="mast_stage3_link"/>
+      <child link="gimbal_yaw_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-pi}" upper="${pi}" effort="20.0" velocity="2.0"/>
+      <dynamics damping="2.0" friction="1.5"/>
+    </joint>
+
+    <link name="gimbal_yaw_link">
+      <visual>
+        <origin xyz="0 0 0.010" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.028" length="0.020"/>
+        </geometry>
+        <material name="aluminium"/>
+      </visual>
+      <xacro:inertial_cylinder mass="${mass_gimbal_yaw}" radius="0.028" length="0.020"
+                               xyz="0 0 0.010"/>
+    </link>
+
+    <joint name="gimbal_pitch_joint" type="revolute">
+      <parent link="gimbal_yaw_link"/>
+      <child link="gimbal_pitch_link"/>
+      <origin xyz="0 0 0.020" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-1.4}" upper="${1.4}" effort="20.0" velocity="2.0"/>
+      <dynamics damping="1.5" friction="1.0"/>
+    </joint>
+
+    <link name="gimbal_pitch_link">
+      <visual>
+        <origin xyz="0 0 0.015" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.050 0.050 0.030"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_gimbal_pitch}" x="0.050" y="0.050" z="0.030"
+                          xyz="0 0 0.015"/>
+    </link>
+
+    <joint name="gimbal_roll_joint" type="revolute">
+      <parent link="gimbal_pitch_link"/>
+      <child link="gimbal_roll_link"/>
+      <origin xyz="0 0 0.030" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-0.6}" upper="${0.6}" effort="20.0" velocity="2.0"/>
+      <dynamics damping="1.5" friction="0.8"/>
+    </joint>
+
+    <!-- camera housing; gimbal_camera_link (and its sensor) is attached
+         in sensors.xacro.  It spans 0.875-0.920 m, so it also bridges the
+         gap up to the camera riser.  The 0.060 x 0.045 footprint is a
+         compromise: the housing crosses the lidar scan plane when the mast
+         is collapsed, and at this size it blanks +-21 deg around the rear.
+         Widening it to 0.075 x 0.055 would blank +-28 deg. -->
+    <link name="gimbal_roll_link">
+      <visual>
+        <origin xyz="0.008 0 0.0225" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.060 0.045 0.045"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_gimbal_roll}" x="0.060" y="0.045" z="0.045"
+                          xyz="0.008 0 0.0225"/>
+    </link>
+
+  </xacro:macro>
+
+</robot>

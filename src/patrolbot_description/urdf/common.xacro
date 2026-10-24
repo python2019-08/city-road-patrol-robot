@@ -1,0 +1,160 @@
+<?xml version="1.0"?>
+<!--
+  Shared dimensions, masses, materials and inertia helpers for the
+  smart patrol / warning robot (patrolbot).
+
+  Frame convention: x forward, y left, z up.
+  Origin: base_footprint on the ground, base_link at wheel-axle height.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================== dimensions (m) ===================== -->
+  <!-- chassis envelope:  0.42 x 0.32 x 0.08, ground clearance 0.04 -->
+  <xacro:property name="chassis_length" value="0.420"/>
+  <xacro:property name="chassis_width" value="0.320"/>
+  <xacro:property name="chassis_height" value="0.080"/>
+
+  <!-- four wheels, two per side, driven as a two-wheel differential drive -->
+  <xacro:property name="wheel_radius" value="0.080"/>
+  <xacro:property name="wheel_width" value="0.040"/>
+  <xacro:property name="wheel_separation" value="0.360"/>
+  <xacro:property name="wheelbase" value="0.280"/>
+
+  <!-- base_link sits at the wheel axle height; footprint stays on the ground -->
+  <xacro:property name="base_link_z" value="${wheel_radius}"/>
+
+  <!-- traffic-cone body -->
+  <xacro:property name="body_height" value="0.740"/>
+  <xacro:property name="body_bottom_radius" value="0.165"/>
+  <xacro:property name="body_top_radius" value="0.100"/>
+  <xacro:property name="body_bottom_z" value="${chassis_height / 2.0}"/>
+  <xacro:property name="body_top_z" value="${body_bottom_z + body_height}"/>
+  <xacro:property name="body_taper"
+                  value="${atan((body_bottom_radius - body_top_radius) / body_height)}"/>
+
+  <!-- curved LED warning screen on the front of the cone -->
+  <xacro:property name="screen_center_z" value="0.320"/>
+  <xacro:property name="screen_center_radius"
+                  value="${body_bottom_radius + (body_top_radius - body_bottom_radius) * screen_center_z / body_height}"/>
+
+  <!-- reflective band centres (heights above the body bottom) -->
+  <xacro:property name="band_low_z" value="0.090"/>
+  <xacro:property name="band_mid_z" value="0.610"/>
+  <xacro:property name="band_high_z" value="0.700"/>
+
+  <!-- Telescopic mast at the rear of the cone top (the lidar occupies the
+       front).  Three 0.525 m stages: the head sits at 0.825 m collapsed and
+       2.40 m extended, and the gimbal camera optical centre reaches
+       0.825 + 3*0.525 + 0.1175 = 2.5175 m, above the 2.5 m requirement.
+       The gimbal joints are stacked +0.02 (yaw) +0.03 (pitch) and the
+       camera is a further +0.0675 above the roll joint. -->
+  <xacro:property name="mast_base_x" value="-0.055"/>
+  <xacro:property name="mast_base_z" value="${body_top_z - 0.035}"/>
+  <xacro:property name="mast_stage_travel" value="0.525"/>
+  <xacro:property name="mast_stage_length" value="0.525"/>
+  <xacro:property name="mast_tube_length" value="${mast_stage_length + 0.080}"/>
+  <xacro:property name="mast_stage1_radius" value="0.030"/>
+  <xacro:property name="mast_stage2_radius" value="0.024"/>
+  <xacro:property name="mast_stage3_radius" value="0.018"/>
+
+  <!-- ===================== masses (kg) ===================== -->
+  <!-- ~29.4 kg in total, within the 35 kg system requirement -->
+  <xacro:property name="mass_base" value="12.00"/>
+  <xacro:property name="mass_wheel" value="1.20"/>
+  <xacro:property name="mass_body" value="7.00"/>
+  <xacro:property name="mass_led_screen" value="0.60"/>
+  <xacro:property name="mass_led_bezel" value="0.35"/>
+  <xacro:property name="mass_strobe" value="0.05"/>
+  <xacro:property name="mass_speaker" value="0.50"/>
+  <xacro:property name="mass_mast_base" value="0.80"/>
+  <xacro:property name="mass_mast_stage1" value="0.60"/>
+  <xacro:property name="mass_mast_stage2" value="0.45"/>
+  <xacro:property name="mass_mast_stage3" value="0.35"/>
+  <xacro:property name="mass_gimbal_yaw" value="0.15"/>
+  <xacro:property name="mass_gimbal_pitch" value="0.12"/>
+  <xacro:property name="mass_gimbal_roll" value="0.25"/>
+  <xacro:property name="mass_gimbal_camera" value="0.15"/>
+  <xacro:property name="mass_lidar" value="0.35"/>
+  <xacro:property name="mass_imu" value="0.05"/>
+  <xacro:property name="mass_gnss" value="0.20"/>
+  <xacro:property name="mass_panorama_camera" value="0.20"/>
+  <xacro:property name="mass_mmwave" value="0.30"/>
+  <xacro:property name="mass_ultrasonic" value="0.02"/>
+
+  <!-- ===================== materials ===================== -->
+  <material name="traffic_orange">
+    <color rgba="1.00 0.40 0.00 1.0"/>
+  </material>
+  <material name="reflective_white">
+    <color rgba="0.92 0.92 0.92 1.0"/>
+  </material>
+  <material name="warning_black">
+    <color rgba="0.02 0.02 0.02 1.0"/>
+  </material>
+  <material name="dark_grey">
+    <color rgba="0.18 0.18 0.18 1.0"/>
+  </material>
+  <material name="aluminium">
+    <color rgba="0.72 0.74 0.76 1.0"/>
+  </material>
+  <material name="rubber">
+    <color rgba="0.03 0.03 0.03 1.0"/>
+  </material>
+  <material name="led_red">
+    <color rgba="1.00 0.04 0.02 1.0"/>
+  </material>
+  <material name="strobe_red">
+    <color rgba="1.00 0.02 0.02 1.0"/>
+  </material>
+  <material name="strobe_blue">
+    <color rgba="0.02 0.08 1.00 1.0"/>
+  </material>
+  <material name="lens_glass">
+    <color rgba="0.02 0.05 0.08 1.0"/>
+  </material>
+
+  <!-- ===================== inertia helpers ===================== -->
+  <xacro:macro name="inertial_box" params="mass x y z xyz">
+    <inertial>
+      <origin xyz="${xyz}" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass * (y*y + z*z) / 12.0}" ixy="0" ixz="0"
+               iyy="${mass * (x*x + z*z) / 12.0}" iyz="0"
+               izz="${mass * (x*x + y*y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- solid cylinder aligned with the link's z axis -->
+  <xacro:macro name="inertial_cylinder" params="mass radius length xyz">
+    <inertial>
+      <origin xyz="${xyz}" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass * (3.0*radius*radius + length*length) / 12.0}" ixy="0" ixz="0"
+               iyy="${mass * (3.0*radius*radius + length*length) / 12.0}" iyz="0"
+               izz="${mass * radius * radius / 2.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="inertial_sphere" params="mass radius xyz">
+    <inertial>
+      <origin xyz="${xyz}" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${0.4 * mass * radius * radius}" ixy="0" ixz="0"
+               iyy="${0.4 * mass * radius * radius}" iyz="0"
+               izz="${0.4 * mass * radius * radius}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ===================== visual helper ===================== -->
+  <!-- A small camera/laser head: body cylinder plus optionally a lens. -->
+  <xacro:macro name="sensor_head" params="radius length material">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${radius}" length="${length}"/>
+      </geometry>
+      <material name="${material}"/>
+    </visual>
+  </xacro:macro>
+
+</robot>

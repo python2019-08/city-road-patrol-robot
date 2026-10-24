@@ -1,0 +1,380 @@
+<?xml version="1.0"?>
+<!--
+  Sensor suite: 100 m lidar, IMU, RTK/GNSS, 1080p panorama camera,
+  gimbal camera (80 m violation capture) and the blind-spot sensor frames.
+
+  Only the lidar / IMU / GNSS / cameras carry Gazebo sensors.  The mmWave
+  radar and the six ultrasonic sensors are modelled as frames + visuals;
+  add <sensor> blocks for them once a plugin for those outputs is chosen.
+
+  This file must be included AFTER mast_gimbal.xacro (gimbal camera is
+  attached to gimbal_roll_link) and after body.xacro.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="patrolbot_sensors">
+
+    <!-- ===================== 100 m 2D lidar ===================== -->
+    <!-- Mounted at the front of the cone top; the scan plane is 0.882 m
+         above the ground.  Everything forward of and beside the lidar is
+         kept below that plane while the mast is collapsed (strobes and
+         mast collar top out at 0.875 m, panorama camera at 0.793 m), so the
+         forward and side sectors are unobstructed.  The gimbal head crosses
+         the plane while the mast is collapsed and blanks about +-21 deg
+         around the rear; intermediate lift states stay within that, and with
+         the mast extended the stage-1 tube is the only occluder, narrowing
+         the blanking to about +-18 deg.  See README.md. -->
+    <joint name="lidar_joint" type="fixed">
+      <parent link="body_link"/>
+      <child link="lidar_link"/>
+      <origin xyz="0.042 0 0.762" rpy="0 0 0"/>
+    </joint>
+
+    <link name="lidar_link">
+      <!-- pedestal down to the cone top -->
+      <visual>
+        <origin xyz="0 0 -0.012" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.028" length="0.024"/>
+        </geometry>
+        <material name="aluminium"/>
+      </visual>
+      <!-- base plate, just above the scan plane -->
+      <visual>
+        <origin xyz="0 0 0.003" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.042" length="0.006"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <!-- low-profile housing -->
+      <visual>
+        <origin xyz="0 0 0.017" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.036" length="0.022"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <!-- top cap; the lidar is 0.035 m tall so it stays out of the
+           gimbal camera's forward field of view in the collapsed pose -->
+      <visual>
+        <origin xyz="0 0 0.0315" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.040" length="0.007"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <xacro:inertial_cylinder mass="${mass_lidar}" radius="0.040" length="0.059"
+                               xyz="0 0 0.006"/>
+    </link>
+
+    <gazebo reference="lidar_link">
+      <sensor name="lidar_sensor" type="gpu_lidar">
+        <always_on>true</always_on>
+        <update_rate>$(arg lidar_update_rate)</update_rate>
+        <visualize>false</visualize>
+        <topic>/scan</topic>
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>$(arg lidar_samples)</samples>
+              <resolution>1</resolution>
+              <min_angle>${-pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <!-- 0.20 m minimum: the closest real obstacle that matters is
+               handled by the ultrasonic ring, and the floor/collision
+               geometry within 20 cm of the axis is discarded. -->
+          <range>
+            <min>0.20</min>
+            <max>$(arg lidar_max_range)</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </gazebo>
+
+    <!-- ===================== IMU ===================== -->
+    <joint name="imu_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="imu_link"/>
+      <origin xyz="0 0 0.030" rpy="0 0 0"/>
+    </joint>
+
+    <link name="imu_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.040 0.040 0.012"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_imu}" x="0.040" y="0.040" z="0.012" xyz="0 0 0"/>
+    </link>
+
+    <gazebo reference="imu_link">
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>$(arg imu_update_rate)</update_rate>
+        <topic>/imu/data</topic>
+        <gz_frame_id>imu_link</gz_frame_id>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0015</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0015</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0015</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </gazebo>
+
+    <!-- ===================== RTK / GNSS antenna ===================== -->
+    <joint name="gnss_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="gnss_link"/>
+      <origin xyz="-0.190 0 0.090" rpy="0 0 0"/>
+    </joint>
+
+    <link name="gnss_link">
+      <!-- post down to the chassis top -->
+      <visual>
+        <origin xyz="0 0 -0.045" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.006" length="0.050"/>
+        </geometry>
+        <material name="aluminium"/>
+      </visual>
+      <!-- antenna disc -->
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.030" length="0.012"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <xacro:inertial_cylinder mass="${mass_gnss}" radius="0.030" length="0.012"
+                               xyz="0 0 0"/>
+    </link>
+
+    <gazebo reference="gnss_link">
+      <sensor name="gnss_sensor" type="navsat">
+        <always_on>true</always_on>
+        <update_rate>$(arg gnss_update_rate)</update_rate>
+        <topic>/gps/fix</topic>
+        <gz_frame_id>gnss_link</gz_frame_id>
+        <navsat>
+          <position_sensing>
+            <horizontal>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.02</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.04</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+        </navsat>
+      </sensor>
+    </gazebo>
+
+    <!-- ===================== panorama camera ===================== -->
+    <!-- Flush on the front of the cone between the middle and high
+         reflective bands (band tops 0.6275 m, band bottoms 0.6825 m;
+         the 36 mm camera body fits the 55 mm gap).  It sits 0.655 m above
+         body_link, well below the lidar scan plane at 0.762 m. -->
+    <joint name="panorama_camera_joint" type="fixed">
+      <parent link="body_link"/>
+      <child link="panorama_camera_link"/>
+      <origin xyz="0.115 0 0.655" rpy="0 0 0"/>
+    </joint>
+
+    <link name="panorama_camera_link">
+      <!-- bracket back to the mast collar -->
+      <visual>
+        <origin xyz="-0.0225 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.045 0.020 0.020"/>
+        </geometry>
+        <material name="aluminium"/>
+      </visual>
+      <!-- housing -->
+      <visual>
+        <origin xyz="-0.0125 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry>
+          <cylinder radius="0.018" length="0.025"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <!-- lens ring -->
+      <visual>
+        <origin xyz="0.001 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry>
+          <cylinder radius="0.010" length="0.004"/>
+        </geometry>
+        <material name="lens_glass"/>
+      </visual>
+      <xacro:inertial_cylinder mass="${mass_panorama_camera}" radius="0.020" length="0.040"
+                               xyz="-0.010 0 0"/>
+    </link>
+
+    <joint name="panorama_camera_optical_joint" type="fixed">
+      <parent link="panorama_camera_link"/>
+      <child link="panorama_camera_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <link name="panorama_camera_optical_frame"/>
+
+    <gazebo reference="panorama_camera_link">
+      <sensor name="panorama_camera" type="camera">
+        <always_on>true</always_on>
+        <update_rate>$(arg panorama_rate)</update_rate>
+        <visualize>false</visualize>
+        <topic>/camera/panorama/image_raw</topic>
+        <gz_frame_id>panorama_camera_optical_frame</gz_frame_id>
+        <camera>
+          <horizontal_fov>$(arg panorama_hfov)</horizontal_fov>
+          <image>
+            <width>$(arg panorama_width)</width>
+            <height>$(arg panorama_height)</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>100.0</far>
+          </clip>
+        </camera>
+      </sensor>
+    </gazebo>
+
+    <!-- ===================== gimbal camera ===================== -->
+    <!-- Raised 45 mm above the roll joint on a short riser: in the
+         collapsed pose the optical axis is at 0.9425 m, 25 mm above the
+         lidar cap (0.917 m), so the lidar does not enter the telephoto
+         camera's +-10 deg vertical field of view. -->
+    <joint name="gimbal_camera_joint" type="fixed">
+      <parent link="gimbal_roll_link"/>
+      <child link="gimbal_camera_link"/>
+      <origin xyz="0.035 0 0.0675" rpy="0 0 0"/>
+    </joint>
+
+    <link name="gimbal_camera_link">
+      <!-- riser connecting the camera head to the roll housing -->
+      <visual>
+        <origin xyz="0 0 -0.01125" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.020 0.020 0.0225"/>
+        </geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <visual>
+        <origin xyz="0.006 0 0" rpy="0 ${pi/2} 0"/>
+        <geometry>
+          <cylinder radius="0.012" length="0.012"/>
+        </geometry>
+        <material name="lens_glass"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_gimbal_camera}" x="0.030" y="0.040" z="0.040"
+                          xyz="0 0 0"/>
+    </link>
+
+    <joint name="gimbal_camera_optical_joint" type="fixed">
+      <parent link="gimbal_camera_link"/>
+      <child link="gimbal_camera_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <link name="gimbal_camera_optical_frame"/>
+
+    <gazebo reference="gimbal_camera_link">
+      <sensor name="gimbal_camera" type="camera">
+        <always_on>true</always_on>
+        <update_rate>$(arg gimbal_camera_rate)</update_rate>
+        <visualize>false</visualize>
+        <topic>/camera/gimbal/image_raw</topic>
+        <gz_frame_id>gimbal_camera_optical_frame</gz_frame_id>
+        <camera>
+          <horizontal_fov>$(arg gimbal_camera_hfov)</horizontal_fov>
+          <image>
+            <width>$(arg gimbal_camera_width)</width>
+            <height>$(arg gimbal_camera_height)</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.10</near>
+            <far>250.0</far>
+          </clip>
+        </camera>
+      </sensor>
+    </gazebo>
+
+    <!-- ===================== mmWave radar (frame only) ===================== -->
+    <joint name="mmwave_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="mmwave_link"/>
+      <origin xyz="0.222 0 0.0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="mmwave_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.025 0.100 0.050"/>
+        </geometry>
+        <material name="warning_black"/>
+      </visual>
+      <xacro:inertial_box mass="${mass_mmwave}" x="0.025" y="0.100" z="0.050" xyz="0 0 0"/>
+    </link>
+
+    <!-- ===================== ultrasonic blind-spot sensors ===================== -->
+    <xacro:macro name="patrolbot_ultrasonic" params="name x y rpy">
+      <joint name="${name}_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="${name}_ultrasonic_link"/>
+        <origin xyz="${x} ${y} 0" rpy="0 0 0"/>
+      </joint>
+      <link name="${name}_ultrasonic_link">
+        <visual>
+          <origin xyz="0 0 0" rpy="${rpy}"/>
+          <geometry>
+            <cylinder radius="0.013" length="0.012"/>
+          </geometry>
+          <material name="dark_grey"/>
+        </visual>
+        <xacro:inertial_cylinder mass="${mass_ultrasonic}" radius="0.013" length="0.012"
+                                 xyz="0 0 0"/>
+      </link>
+    </xacro:macro>
+
+    <xacro:patrolbot_ultrasonic name="front_left"  x="0.214" y="0.100"  rpy="0 ${pi/2} 0"/>
+    <xacro:patrolbot_ultrasonic name="front_right" x="0.214" y="-0.100" rpy="0 ${pi/2} 0"/>
+    <xacro:patrolbot_ultrasonic name="rear_left"   x="-0.214" y="0.100"  rpy="0 ${pi/2} 0"/>
+    <xacro:patrolbot_ultrasonic name="rear_right"  x="-0.214" y="-0.100" rpy="0 ${pi/2} 0"/>
+    <xacro:patrolbot_ultrasonic name="left"        x="0.0" y="0.164"  rpy="${pi/2} 0 0"/>
+    <xacro:patrolbot_ultrasonic name="right"       x="0.0" y="-0.164" rpy="${pi/2} 0 0"/>
+
+  </xacro:macro>
+
+</robot>

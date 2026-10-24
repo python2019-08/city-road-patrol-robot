@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!--
+  ros2_control hardware description for Gazebo Harmonic (gz_ros2_control).
+
+  The four wheel joints are exposed with velocity commands and
+  position/velocity states.  diff_drive_controller treats the front and
+  rear wheel of each side as one virtual wheel (see config/ros2_control.yaml).
+
+  The physical robot swaps only the <hardware><plugin> entry for its own
+  hardware interface; this file, the controller YAML and all upper layers
+  stay unchanged.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="patrolbot_ros2_control">
+    <ros2_control name="patrolbot_system" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+
+      <joint name="front_left_wheel_joint">
+        <command_interface name="velocity">
+          <param name="min">-40.0</param>
+          <param name="max">40.0</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+
+      <joint name="rear_left_wheel_joint">
+        <command_interface name="velocity">
+          <param name="min">-40.0</param>
+          <param name="max">40.0</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+
+      <joint name="front_right_wheel_joint">
+        <command_interface name="velocity">
+          <param name="min">-40.0</param>
+          <param name="max">40.0</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+
+      <joint name="rear_right_wheel_joint">
+        <command_interface name="velocity">
+          <param name="min">-40.0</param>
+          <param name="max">40.0</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(arg controllers_file)</parameters>
+        <robot_param>robot_description</robot_param>
+        <robot_param_node>robot_state_publisher</robot_param_node>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+</robot>
