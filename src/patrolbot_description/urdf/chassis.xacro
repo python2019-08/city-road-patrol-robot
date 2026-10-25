@@ -33,7 +33,9 @@
         </geometry>
       </collision>
       <xacro:inertial_box mass="${mass_base}"
-                          x="${chassis_length}" y="${chassis_width}" z="${chassis_height}"
+                          x="${chassis_length}" 
+                          y="${chassis_width}" 
+                          z="${chassis_height}"
                           xyz="0 0 0"/>
     </link>
 
@@ -57,14 +59,18 @@
         <visual>
           <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
           <geometry>
-            <cylinder radius="${wheel_radius * 0.45}" length="${wheel_width + 0.004}"/>
+            <cylinder 
+              radius="${wheel_radius * 0.45}" 
+              length="${wheel_width + 0.004}"/>
           </geometry>
           <material name="aluminium"/>
         </visual>
         <collision>
           <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
           <geometry>
-            <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+            <cylinder 
+              radius="${wheel_radius}" 
+              length="${wheel_width}"/>
           </geometry>
         </collision>
         <inertial>

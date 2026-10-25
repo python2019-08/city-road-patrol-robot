@@ -4,7 +4,7 @@
 
   Usage:
     xacro patrolbot.urdf.xacro > /tmp/patrolbot.urdf
-    xacro patrolbot.urdf.xacro lidar_samples:=360 controllers_file:=/abs/path.yaml
+    xacro patrolbot.urdf.xacro lidar_lines:=16 lidar_samples:=360 controllers_file:=/abs/path.yaml
 
   The model targets ROS 2 Jazzy + Gazebo Harmonic.  See README.md in this
   directory for the world plugins and bridge topics the simulation needs.
@@ -16,8 +16,20 @@
              default="$(find patrolbot_description)/config/ros2_control.yaml"/>
 
   <xacro:arg name="lidar_samples" default="720"/>
+  <xacro:arg name="lidar_lines" default="32"/>
   <xacro:arg name="lidar_max_range" default="100.0"/>
   <xacro:arg name="lidar_update_rate" default="10.0"/>
+
+  <!-- Multi-line lidar presets (placeholder values until the sensor is selected):
+         32 lines: vertical FOV -25 deg ... +15 deg
+         16 lines: vertical FOV -15 deg ... +15 deg
+       Only 16 and 32 are supported; any other value falls back to the
+       32-line preset.  The horizontal resolution is still controlled by
+       lidar_samples (points per ring). -->
+  <xacro:property name="lidar_line_count" value="$(arg lidar_lines)"/>
+  <xacro:property name="lidar_vertical_min_angle"
+                  value="${-0.2618 if int(lidar_line_count) == 16 else -0.4363}"/>
+  <xacro:property name="lidar_vertical_max_angle" value="0.2618"/>
 
   <xacro:arg name="imu_update_rate" default="100.0"/>
   <xacro:arg name="gnss_update_rate" default="10.0"/>

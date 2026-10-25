@@ -8,9 +8,6 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY urdf meshes config
-  DESTINATION share/${PROJECT_NAME}
-)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -23,5 +20,18 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+
+install(DIRECTORY launch urdf meshes config world
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# env hook(1/2):安装 
+install(DIRECTORY env models
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# env hook(2/2):注册 hook（这一行不能少）
+ament_environment_hooks("env/set_gz_paths.dsv")
 
 ament_package()

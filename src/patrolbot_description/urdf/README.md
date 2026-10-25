@@ -1,11 +1,11 @@
-# patrolbot_description / urdf
+# ch01.patrolbot_description / urdf
 
 智能巡逻告警机器人（smart patrol &amp; alarm robot）的 URDF/Xacro 模型，
 面向 **ROS 2 Jazzy + Gazebo Harmonic**。
 
 - 外形：交通锥筒车身，橙色 + 三道白色反光带
 - 底盘：0.42 × 0.32 × 0.08 m，离地 0.04 m，四轮两电机差速驱动
-- 传感器：100 m 激光雷达、IMU、RTK/GNSS、1080p 全景相机、云台长焦相机
+- 传感器：100 m 多线激光雷达（32 线默认，可切 16 线）、IMU、RTK/GNSS、1080p 全景相机、云台长焦相机
   （mmWave 与超声波目前只有坐标帧，见第 10 节）
 - 执行器：三节电动升降杆（最大抬升 2.5 m）+ 三轴增稳云台
 - 整机质量约 29.4 kg（要求 ≤ 35 kg）
@@ -76,7 +76,8 @@ base_footprint
 | 锥筒车身 | 高 0.740 m，底半径 0.165 m，顶半径 0.100 m；底面 0.120 m，顶面 0.860 m |
 | 反光带中心（相对 `body_link`） | 0.090 / 0.610 / 0.700 m |
 | LED 屏中心（相对 `body_link`） | 0.320 m |
-| 激光雷达扫描面 | 0.882 m（雷达顶 0.917 m） |
+| 激光雷达扫描原点 | 0.882 m（雷达顶 0.917 m；外壳/质量为占位值） |
+| 激光雷达垂直视场 | 32 线：−25°…+15°；16 线：−15°…+15° |
 | 云台相机光心（收杆） | 0.9425 m；整机最高点约 0.955 m |
 | 云台相机光心（完全升起） | **2.5175 m**（3 × 0.525 m 行程，满足 ≥ 2.5 m） |
 | 总质量 | 约 29.4 kg（要求 ≤ 35 kg） |
@@ -88,13 +89,20 @@ base_footprint
 
 | 传感器 | Gazebo 类型 | 话题 | 帧 | 频率 | 主要参数 |
 | --- | --- | --- | --- | --- | --- |
-| 100 m 激光雷达 | `gpu_lidar` | `/scan` | `lidar_link` | 10 Hz | 720 线，−π…π，0.20–100 m，σ = 0.01 m |
+| 100 m 多线激光雷达 | `gpu_lidar` | `/scan/points`（PointCloud2）<br>`/scan`（LaserScan，仅中间线束） | `lidar_link` | 10 Hz | 32 线默认 / 16 线可选；32 线 −25°…+15°，16 线 −15°…+15°；720 点/圈，−π…π，0.20–100 m，σ = 0.01 m |
 | IMU | `imu` | `/imu/data` | `imu_link` | 100 Hz | 角速度 σ 0.0015 rad/s，加速度 σ 0.02 m/s² |
 | RTK/GNSS | `navsat` | `/gps/fix` | `gnss_link` | 10 Hz | 水平 σ 0.02 m，垂直 σ 0.04 m |
 | 全景相机 | `camera` | `/camera/panorama/image_raw` | `panorama_camera_optical_frame` | 25 Hz | 1920×1080，HFOV 2.4 rad（≈137°），0.05–100 m |
 | 云台相机 | `camera` | `/camera/gimbal/image_raw` | `gimbal_camera_optical_frame` | 25 Hz | 1920×1080，HFOV 0.6 rad（≈34°），0.10–250 m |
 | mmWave 雷达 | — | — | `mmwave_link` | — | 车前 0.222 m，仅坐标帧 |
 | 超声波 ×6 | — | — | `*_ultrasonic_link` | — | 四角 + 两侧，仅坐标帧 |
+
+`gpu_lidar` 在 `/scan` 上发布 `gz.msgs.LaserScan`，并自动在 `/scan/points`
+上发布 `gz.msgs.PointCloudPacked`。多线时 Gazebo 的 LaserScan 会把所有线束
+摊平，`ros_gz_bridge` 只取中间一条线束转换成 ROS `LaserScan`；32 线配置的
+中间线束向下倾斜约 4°–5°，会带回约 10 m 处的地面点，因此不要把 `/scan`
+直接当作水平 2D 雷达使用。推荐桥接 `/scan/points`，再用
+`pointcloud_to_laserscan` 按高度切片生成 Nav2 用的 `/scan`。
 
 `<topic>` 是 **Gazebo** 话题名，经 `ros_gz_bridge` 后沿用同名 ROS 话题。
 `navsat` 需要在 world 中提供 `<spherical_coordinates>` 才会有有意义的经纬度。
@@ -128,7 +136,8 @@ image_proc / 标定流程使用（见第 8 节）。
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `controllers_file` | `$(find patrolbot_description)/config/ros2_control.yaml` | 控制器配置 |
-| `lidar_samples` | `720` | 每圈点数 |
+| `lidar_lines` | `32` | 线数；`16` 或 `32`，其他值按 32 线处理 |
+| `lidar_samples` | `720` | 每圈点数（每条线束的水平采样数） |
 | `lidar_max_range` | `100.0` | 最大量程（m） |
 | `lidar_update_rate` | `10.0` | Hz |
 | `imu_update_rate` | `100.0` | Hz |
@@ -137,6 +146,21 @@ image_proc / 标定流程使用（见第 8 节）。
 | `panorama_rate` / `panorama_hfov` | `25.0` / `2.4` | 频率 / 水平视场角（rad） |
 | `gimbal_camera_width` / `..._height` | `1920` / `1080` | 云台相机 |
 | `gimbal_camera_rate` / `..._hfov` | `25.0` / `0.6` | 频率 / 水平视场角（rad） |
+
+线数通过 `lidar_lines` 切换，垂直视场随线数自动取占位预设：
+
+| `lidar_lines` | 垂直视场 | 最低线束触地距离（扫描原点 0.882 m） |
+| --- | --- | --- |
+| `32`（默认） | −25°…+15° | 约 1.9 m |
+| `16` | −15°…+15° | 约 3.3 m |
+
+```bash
+xacro patrolbot.urdf.xacro > /tmp/patrolbot32.urdf                  # 32 线
+xacro patrolbot.urdf.xacro lidar_lines:=16 > /tmp/patrolbot16.urdf  # 16 线
+```
+
+这些视场角只是常见 16/32 线机械式雷达的占位值，最终以选型 datasheet 为准；
+外壳尺寸与质量也仍是占位值。
 
 ## 7. Gazebo world 需要的系统插件
 
@@ -174,7 +198,7 @@ image_proc / 标定流程使用（见第 8 节）。
 ```bash
 ros2 run ros_gz_bridge parameter_bridge \
   /clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock \
-  /scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan \
+  /scan/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked \
   /imu/data@sensor_msgs/msg/Imu@gz.msgs.IMU \
   /gps/fix@sensor_msgs/msg/NavSatFix@gz.msgs.NavSat \
   /camera/panorama/image_raw@sensor_msgs/msg/Image@gz.msgs.Image \
@@ -186,11 +210,36 @@ ros2 run ros_gz_bridge parameter_bridge \
 `/diff_drive_controller/*` 和 `/joint_states` 由 ROS 侧控制器产生，不需要桥接。
 使用仿真时间时记得设置 `use_sim_time:=true`。
 
+多线雷达**不建议**直接把 `/scan`（LaserScan）桥接给 Nav2：如上文所述，它只是
+中间一条线束，32 线时还会带回约 10 m 处的地面点。用点云生成水平切片：
+
+```bash
+sudo apt install ros-jazzy-pointcloud-to-laserscan   # 本机尚未安装
+
+ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args \
+  -r cloud_in:=/scan/points -r scan:=/scan \
+  -p target_frame:=base_link \
+  -p min_height:=-0.10 -p max_height:=0.30 \
+  -p angle_min:=-3.14159 -p angle_max:=3.14159 \
+  -p angle_increment:=0.0087 \
+  -p range_min:=0.20 -p range_max:=100.0 \
+  -p scan_time:=0.1 -p use_inf:=true
+```
+
+`min_height`/`max_height` 是相对 `target_frame` 的高度切片，应按实际地面
+高度和障碍物高度调整；切片之外的线束（大部分地面点）不会进入 `/scan`。
+
 ## 9. 构建与运行
 
 ```bash
+ThisWS=/home/abner/a2/zdev/nv/adas-01/ros/city-road-patrol-robot/
+cd ${ThisWS}
+rm -fr build/ install/ log/ 
+
 # 1) 编译
-colcon build --packages-select patrolbot_description
+# colcon build --packages-select patrolbot_description
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3  --packages-select patrolbot_description
+
 source install/setup.bash
 
 # 2) 生成 URDF
@@ -198,7 +247,8 @@ xacro install/patrolbot_description/share/patrolbot_description/urdf/patrolbot.u
   > /tmp/patrolbot.urdf
 
 # 3) 启动 Gazebo（world 需包含第 7 节的插件；去掉 -s 打开 GUI）
-gz sim -r -s your_world.sdf
+# gz sim -r -s your_world.sdf
+gz sim -r  src/patrolbot_description/world/custom_room.world.sdf
 
 # 4) 发布 robot_description 并生成模型
 ros2 run robot_state_publisher robot_state_publisher /tmp/patrolbot.urdf
@@ -216,13 +266,18 @@ ros2 topic pub -r 10 /diff_drive_controller/cmd_vel \
 
 ## 10. 设计说明与已知限制
 
-- **雷达布局**：雷达装在锥顶前方，扫描面 0.882 m。前向与两侧的所有几何
-  （锥顶 0.860 m、爆闪灯顶 0.875 m、升降杆法兰顶 0.870 m、全景相机顶
-  0.793 m）都低于扫描面，因此前向/侧向无自遮挡。唯一穿过扫描面的是
-  后方的云台头：收杆时遮挡约 **±21°**（正后方）；升降杆升起后云台让开，
-  只有第一节套管穿过扫描面，遮挡收窄到约 **±18°**。这是有意取舍——
-  把升降杆放在后方，把雷达的前向视野做到最大。
-- **雷达最小量程 0.20 m**：扫描面附近的车体、地面回波和近距离杂点在此
+- **雷达布局与自遮挡（多线）**：雷达装在锥顶前方，扫描原点 0.882 m，
+  垂直视场为 32 线 −25°…+15°（16 线 −15°…+15°）。前向/侧向的锥顶、
+  爆闪灯、升降杆法兰顶和全景相机顶都在扫描原点以下，低线束会先看到
+  它们再看到更远的地面；这些结构又都位于 0.2 m 最小量程附近或之内，
+  近距回波会被裁掉。收杆时后方云台头位于原点上方几厘米，只会遮挡向上
+  线束的一小段水平扇区，不再是单线模型里“正后方 ±21°”的整圈盲区；
+  精确的三维遮挡仍需按最终选型的线束角度重算。
+- **地面回波**：垂直视场会主动扫到地面。32 线最低线束 −25°，从 0.882 m
+  高度约在 1.9 m 外触地；16 线 −15° 约在 3.3 m 外触地。这些地面点是
+  地面分割和坡度估计的输入，不是噪声；如果只需要 2D 导航，应通过
+  `pointcloud_to_laserscan` 的高度切片把它们滤掉（见第 8 节）。
+- **雷达最小量程 0.20 m**：扫描原点附近的车体、地面回波和近距离杂点在此
   范围内被丢弃，0.2 m 以内的障碍由车身周围的超声波负责。
 - **视觉 vs 碰撞**：车身、底盘使用简化碰撞体（锥筒用三段圆柱近似）；反光
   带、LED、云台等只有视觉，不参与碰撞，避免自碰撞和仿真抖动。
@@ -238,10 +293,10 @@ ros2 topic pub -r 10 /diff_drive_controller/cmd_vel \
   `diff_drive_controller` 的加速度限制，可减少低速打滑和抖动。
 - **仿真中的雷达“近距裁剪”**：Ogre2 后端的 GPU 雷达不渲染距离小于
   `range.min` 的几何，射线会直接穿过去。因此本模型中 `range.min = 0.20 m`
-  时，收杆状态的云台头（离扫描面约 0.09 m）不会在 `/scan` 上形成上面
-  说的 ±21° 后向盲区，仿真里 360° 都有数据。真机上该盲区仍然存在。
-  若要在仿真里复现自遮挡，需要把 `range.min` 降到 0.08 m 以下（修改
-  `sensors.xacro`），代价是 0.2 m 内的地面和车体杂点会进入扫描。
+  时，收杆状态的云台头（离扫描原点约 0.09 m）不会在点云里形成上面说的
+  后向遮挡，仿真里雷达四周都有数据。真机上该遮挡仍然存在。若要在仿真里
+  复现自遮挡，需要把 `range.min` 降到 0.08 m 以下（修改 `sensors.xacro`），
+  代价是 0.2 m 内的地面和车体杂点会进入点云。
 - **四轮滑移转向的里程计偏差**：同侧前后轮由同一电机驱动、间距 0.28 m，
   原地转向时四个轮子都要横向擦地（skid steer）。实测仿真中指令
   0.6 rad/s 的实际偏航约 0.43 rad/s，而按轮速积分的 `/odom` 仍按
@@ -259,33 +314,262 @@ ros2 topic pub -r 10 /diff_drive_controller/cmd_vel \
 ### 关键参数
 
 ┌──────────┬────────────────────────────────────────────────────────────┐
-│   项目   │                             值                             │
+│   项目    │                             值                             │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 底盘     │ 0.42×0.32×0.08 m，离地 0.04 m，轮距 0.36 m，轴距 0.28 m    │
+│ 底盘      │ 0.42×0.32×0.08 m，离地 0.04 m，轮距 0.36 m，轴距 0.28 m       │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 锥筒车身 │ 顶面 0.860 m（约 90 cm），三道反光带                       │
+│ 锥筒车身  │ 顶面 0.860 m（约 90 cm），三道反光带                           │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 雷达     │ 扫描面 0.882 m，720 线，±π，0.2–100 m，10 Hz               │
+│ 雷达      │ 32 线（默认）/16 线，扫描原点 0.882 m，0.2–100 m，10 Hz       │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 升降杆   │ 3 × 0.525 m 行程，云台相机最高 2.5175 m                    │
+│ 升降杆    │ 3 × 0.525 m 行程，云台相机最高 2.5175 m                       │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 云台     │ yaw ±π、pitch ±1.4、roll ±0.6                              │
+│ 云台      │ yaw ±π、pitch ±1.4、roll ±0.6                                │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 质量     │ 约 29.4 kg（要求 ≤35 kg）                                  │
+│ 质量      │ 约 29.4 kg（要求 ≤35 kg）                                   │
 ├──────────┼────────────────────────────────────────────────────────────┤
-│ 驱动     │ 四轮两电机，同侧前后轮作为虚拟轮交给 diff_drive_controller │
+│ 驱动      │ 四轮两电机，同侧前后轮作为虚拟轮交给 diff_drive_controller       │
 └──────────┴────────────────────────────────────────────────────────────┘
 
 ### 验证结果
 
-- xacro → check_urdf → gz sdf -p 全部通过（11 links / 10 joints）；colcon build 通过，安装后 package:// 网格解析为 model://，无报错。
-- Gazebo Harmonic 无界面启动、spawn 成功；/scan、/imu/data、/gps/fix、两台相机的 image_raw 与 camera_info 均正常发布。
+- xacro → check_urdf → gz sdf -p 全部通过（11 links / 10 joints）；32 线和 16 线两种配置都能转换，colcon build 通过，安装后 package:// 网格解析为 model://，无报错。
+- 单线版本的 Gazebo Harmonic 无界面启动、spawn 成功；/scan、/imu/data、/gps/fix、两台相机的 image_raw 与 camera_info 均正常发布。改成多线后新增的 `/scan/points` 尚未在 Gazebo 中实跑验证，`pointcloud_to_laserscan` 也尚未安装。
 - 控制器：joint_state_broadcaster 与 diff_drive_controller 加载并激活；下发 0.5 m/s 后 odom 与实际模型位姿一致（2.20835 vs 2.20841 m），转向指令也正常。
 - 期间修复了一个配置错误：Jazzy 的 diff_drive_controller 要求 max_deceleration ≤ 0、max_acceleration_reverse ≤ 0，已改为负值并在 YAML 中注明符号约定，这是之前加载失败的根因。
 
 ### 已知限制（README 第 10 节有详细说明）
 
-- 雷达被后方云台头遮挡 ±21°（收杆）/ ±18°（升起），这是真机属性；仿真中 GPU 雷达的近距裁剪会让 0.2 m 内的遮挡物直接穿透，需把 range.min 降到 <0.08 m 才能复现。
+- 多线雷达的垂直视场、外壳尺寸和质量都是占位值；后方云台头对向上线束的精确遮挡需按最终选型的线束角度重算。仿真中 GPU 雷达的近距裁剪会让 0.2 m 内的遮挡物直接穿透，需把 range.min 降到 <0.08 m 才能复现。
 - 四轮滑移转向在纯原地转向时有横向擦地，轮速里程计的偏航会比真实运动超前约 30–45%，建议真机用 IMU+RTK 融合或校准 wheel_separation_multiplier。
 - 升降杆/云台为被动关节；mmWave 和超声波目前只有坐标帧。
 - 本机 colcon build 会优先调用 conda 的 python 而缺少 catkin_pkg，可用 -DPython3_EXECUTABLE=/usr/bin/python3 规避。
+
+==============================================
+# ch02. gpu_lidar 和 mmWave 雷达
+mmWave 雷达 = 毫米波雷达（millimeter-wave radar），它和激光雷达是两种完全不同的传感器：
+
+## 区别
+
+┌──────────┬──────────────────────┬─────────────────────────────────────────────────┐
+│          │   激光雷达 (lidar)   │            毫米波雷达 (mmWave radar)            │
+├──────────┼──────────────────────┼─────────────────────────────────────────────────┤
+│ 物理介质 │ 激光，属于近红外光   │ 电磁波，频率 24 GHz、77–79 GHz 等，波长 1–10 mm │
+├──────────┼──────────────────────┼─────────────────────────────────────────────────┤
+│ 探测内容 │ 距离、角度，生成点云 │ 距离、径向速度（多普勒）、角度                  │
+├──────────┼──────────────────────┼─────────────────────────────────────────────────┤
+│ 天气影响 │ 雨雾、扬尘会明显衰减 │ 穿透雨雾、烟尘的能力强，受影响小                │
+├──────────┼──────────────────────┼─────────────────────────────────────────────────┤
+│ 常见用途 │ 建图、导航、避障     │ 自适应巡航、盲区监测、前向碰撞预警              │
+└──────────┴──────────────────────┴─────────────────────────────────────────────────┘
+
+所以在 README ch01第 4 节的表格里：
+
+- gpu_lidar：Gazebo 的 GPU 激光雷达传感器插件，对应 `/scan`（LaserScan）和 `/scan/points`（PointCloud2），在这里就是“100 m 多线激光雷达”。
+- mmWave 雷达：字面就是毫米波雷达。README 里它的那一行都是“—”，因为它没有 Gazebo 插件，只有 mmwave_link 这个坐标帧和一个外观模型（sensors.xacro:344-363，装在车前 0.222 m、质量 0.30 kg），目前不会发布任何话题。
+
+> 术语提醒：中文口语里常把两者都简称“雷达”，但严格说 lidar 是激光雷达，mmWave radar 才是（电磁）雷达。README 顶部第 8 行的“100 m 多线激光雷达”和第 9 行的“mmWave”并列表述是对的，只是“雷达”一词在不同语境下含义不同，容易混。
+
+## 这个模型里的定位
+
+从 sensors.xacro 的注释看，mmWave 和 6 个超声波一起被归为 blind-spot sensor（盲区传感器）：放在车头向前探测近距障碍，是激光雷达（最小量程 0.20 m）和车身下方盲区的补充。
+若以后要让它出数据，需要在 sensors.xacro 给它加 <gazebo> + <sensor> 块（Gazebo Harmonic 没有内置毫米波雷达插件，通常用 gpu_ray/自定义插件模拟，或用 ros_gz_bridge 接入外部节点）。
+
+==============================================
+
+# ch03. mmWave 雷达接入 Gazebo（插件方案）
+
+**结论先行：Gazebo Harmonic（本机 gz-sim 8.15）没有 `radar` / `mmwave` 这种原生
+sensor 类型。** `<sensor type="...">` 只认 `camera`、`gpu_lidar`、`imu`、
+`navsat` 等内置类型，把 type 字符串改成 `mmwave` 不会自动生效。因此“接入插件”
+实际有三条路，按复杂度从低到高如下。
+
+## 方案 A（推荐）：用 `gpu_lidar` 冒充毫米波前端
+
+world 里已经加载了 `gz-sim-sensors-system`（ogre2），所以**不需要新插件**，
+只要在 `mmwave_link` 上再挂一个短量程、有限 FOV 的 `gpu_lidar`。它提供距离和
+方位，没有 Doppler/RCS，但对避障、盲区检测足够。
+
+### 在 `patrolbot.urdf.xacro` 加参数
+
+```xml
+<xacro:arg name="mmwave_update_rate"  default="20.0"/>
+<xacro:arg name="mmwave_samples"      default="241"/>   <!-- ±60°，约 0.5°/点 -->
+<xacro:arg name="mmwave_min_range"    default="0.10"/>
+<xacro:arg name="mmwave_max_range"    default="20.0"/>
+<xacro:arg name="mmwave_range_stddev" default="0.02"/>
+```
+
+### 在 `sensors.xacro` 的 `mmwave_link` 后面加 sensor
+
+```xml
+<gazebo reference="mmwave_link">
+  <sensor name="mmwave_sensor" type="gpu_lidar">
+    <always_on>true</always_on>
+    <update_rate>$(arg mmwave_update_rate)</update_rate>
+    <visualize>false</visualize>
+    <topic>/mmwave/scan</topic>
+    <gz_frame_id>mmwave_link</gz_frame_id>
+    <lidar>
+      <scan>
+        <horizontal>
+          <samples>$(arg mmwave_samples)</samples>
+          <resolution>1</resolution>
+          <min_angle>-1.0472</min_angle>   <!-- -60° -->
+          <max_angle>1.0472</max_angle>    <!-- +60° -->
+        </horizontal>
+        <vertical>
+          <samples>1</samples>
+          <resolution>1</resolution>
+          <min_angle>0</min_angle>
+          <max_angle>0</max_angle>
+        </vertical>
+      </scan>
+      <range>
+        <min>$(arg mmwave_min_range)</min>
+        <max>$(arg mmwave_max_range)</max>
+        <resolution>0.01</resolution>
+      </range>
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>$(arg mmwave_range_stddev)</stddev>
+      </noise>
+    </lidar>
+  </sensor>
+</gazebo>
+```
+
+注意两点：
+
+- `gpu_lidar` 必须写在 `<gazebo reference="mmwave_link">` 里，不能直接写进 `<link>`。
+- gz-sim 会自动在 `<topic>` 后加 `/points` 发布点云，所以实际有两个话题：
+  - `/mmwave/scan` → `gz.msgs.LaserScan`
+  - `/mmwave/scan/points` → `gz.msgs.PointCloudPacked`
+
+### 桥接到 ROS 2
+
+在 `gazebo_sim.launch.py` 或手写 `parameter_bridge` 中加（`[` 表示 Gazebo→ROS）：
+
+```bash
+ros2 run ros_gz_bridge parameter_bridge \
+  /mmwave/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan \
+  /mmwave/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked
+```
+
+然后可以直接把 `/mmwave/scan` 喂给 Nav2 的 `obstacle_layer`，无需 `radar_msgs`。
+
+**局限**：用光学射线而不是电磁波，雨雾/烟尘衰减、多径、RCS、Doppler 都没有；
+近距仍受 `range.min` 裁剪影响。
+
+## 方案 B：要 `radar_msgs` 和 Doppler，加一个 ROS 2 适配节点
+
+`gpu_lidar` 本身没有径向速度。保留方案 A 的点云，再写一个普通 ROS 2 节点：
+
+```bash
+sudo apt install ros-jazzy-radar-msgs
+```
+
+节点做三件事：
+
+1. 订阅 `/mmwave/scan/points`、`/odom` 和 TF，把点变换到 `odom` 系；
+2. 对每个点计算极坐标：
+   - `range = |p|`
+   - `azimuth = atan2(p.y, p.x)`
+   - `elevation = asin(p.z / range)`
+   - 静止目标：`doppler = -v_ego · p/|p|`
+3. 组装并发布 `radar_msgs/msg/RadarScan`。
+
+如果要模拟**运动目标**的多普勒，单靠点云不够，需要额外订阅 Gazebo 的
+`/world/default/dynamic_pose/info`（或给目标模型加 `OdometryPublisher`）拿到
+目标速度，再算 `v_r = (v_target - v_sensor) · u`。这是仿真里常用的“作弊”做法。
+
+这个方案不改 Gazebo 插件，工作量最小，适合算法联调。
+
+## 方案 C：真正的自定义 mmWave system 插件
+
+如果要 FMCW 距离分辨率、速度模糊、SNR、RCS、多径，就必须自己写插件。注意：
+**不要试图只扩展 `<sensor type="mmwave">`**，`gz-sim-sensors` 的 Sensors system
+只构造内置类型；实际做法是写一个 `gz::sim::System` 插件，挂到 world 或 model 上。
+
+插件骨架（Gazebo Harmonic / gz-sim8）：
+
+```cpp
+#include <gz/sim/System.hh>
+#include <gz/plugin/Register.hh>
+#include <gz/transport/Node.hh>
+#include <gz/msgs/pointcloud_packed.pb.h>
+
+class MmWaveRadar : public gz::sim::System,
+                    public gz::sim::ISystemConfigure,
+                    public gz::sim::ISystemPostUpdate
+{
+  void Configure(const gz::sim::Entity &entity,
+                 const std::shared_ptr<const sdf::Element> &sdf,
+                 gz::sim::EntityComponentManager &ecm,
+                 gz::sim::EventManager &) override;
+  void PostUpdate(const gz::sim::UpdateInfo &info,
+                  const gz::sim::EntityComponentManager &ecm) override;
+
+  gz::transport::Node node;
+  gz::transport::Node::Publisher pub;
+};
+
+GZ_ADD_PLUGIN(MmWaveRadar, gz::sim::System,
+              MmWaveRadar::ISystemConfigure,
+              MmWaveRadar::ISystemPostUpdate)
+GZ_ADD_PLUGIN_ALIAS(MmWaveRadar, "patrolbot::MmWaveRadar")
+```
+
+在 world 中注册：
+
+```xml
+<plugin filename="libmmwave_radar.so" name="patrolbot::MmWaveRadar">
+  <link>patrolbot/mmwave_link</link>
+  <topic>/mmwave/points</topic>
+  <range_min>0.1</range_min>
+  <range_max>20.0</range_max>
+  <azimuth_fov>2.094</azimuth_fov>   <!-- ±60° -->
+</plugin>
+```
+
+实现要点：
+
+- 用 `gz::rendering::RayQuery`（或对场景 AABB 做几何求交）发射射线；
+- 用 `gz::msgs::PointCloudPacked` 发布，字段除 `x/y/z` 外可加 `intensity`
+  （RCS 代理）和 `radial_velocity`；
+- 速度用 `components::LinearVelocity` 或相邻帧位姿差分计算
+  `v_r = (v_obj - v_sensor) · u`；
+- 通过 `ros_gz_bridge` 把点云桥成 `sensor_msgs/PointCloud2`，再用方案 B 的节点
+  转成 `radar_msgs/RadarScan`；
+- 要真实 FMCW 的 IQ/chirp/多普勒模糊，实现量会大很多。
+
+现成的开源实现里，**Fraunhofer IEM 的 FMCW MIMO 雷达插件**是目前较完整的
+Harmonic 方案（`libiem_raytracing_sensor.so`，支持 Vulkan/Embree 射线追踪、
+IQ 合成、PointCloud2/Image 输出），但依赖重、编译复杂，适合研究验证，
+不太适合直接塞进这个 description 包。
+
+## 怎么选
+
+| 目标 | 方案 |
+| --- | --- |
+| Nav2 避障 / 盲区检测，只要距离 | **A** |
+| 算法需要 `radar_msgs/RadarScan`、Doppler | **B** |
+| 研究 FMCW、RCS、多径、真实雷达信号 | **C** 或直接用 IEM 插件 |
+
+**建议**：先做 A，跑通话题和 costmap；等上层算法确实需要多普勒时再补 B。
+这个项目里 mmWave 本来就是盲区传感器，A 已经能覆盖大部分仿真需求。
+
+## 顺带修正：激光雷达点云话题
+
+按 `gz-sensors` 的实现，点云话题是 `<topic>/points`，也就是 `/scan/points`，
+不是 `/lidar_points`；第 8 节已改为桥接 `/scan/points`。另外，多线时
+`/scan`（LaserScan）只包含中间一条线束，不能直接当作水平 2D 雷达使用，
+应先用 `pointcloud_to_laserscan` 做高度切片。加 mmWave 时按同样规则处理。
+
+## 参考
+
+- [Doppler Radar Sensor implementation — Gazebo Community](https://community.gazebosim.org/t/doppler-radar-sensor-implementation/2137)
+- [Fraunhofer IEM FMCW MIMO Radar Plugin for Gazebo Harmonic](https://gitlab.cc-asp.fraunhofer.de/ieee_sensors_2026/ieee_sensors_2026_iem_simulation)
+- [gz-sensors GpuLidarSensor.cc（点云话题 `<topic>/points`）](https://github.com/gazebosim/gz-sensors/blob/gz-sensors8/src/GpuLidarSensor.cc)
+- [Radar Plugin for Gazebo — Open Robotics Discourse](https://discourse.openrobotics.org/t/radar-plugin-for-gazebo/59153)

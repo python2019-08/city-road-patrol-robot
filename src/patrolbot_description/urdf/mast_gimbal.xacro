@@ -44,7 +44,8 @@
         <child link="mast_stage${index}_link"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
-        <limit lower="0.0" upper="${travel}" effort="200.0" velocity="0.20"/>
+        <limit lower="0.0" upper="${travel}" 
+              effort="200.0" velocity="0.20"/>
         <dynamics damping="50.0" friction="25.0"/>
       </joint>
 
@@ -56,19 +57,24 @@
           </geometry>
           <material name="aluminium"/>
         </visual>
-        <xacro:inertial_cylinder mass="${mass}" radius="${radius}" length="${mast_tube_length}"
-                                 xyz="0 0 ${-mast_tube_length/2.0}"/>
+        <xacro:inertial_cylinder mass="${mass}" 
+              radius="${radius}" 
+              length="${mast_tube_length}"
+              xyz="0 0 ${-mast_tube_length/2.0}"/>
       </link>
     </xacro:macro>
 
     <xacro:patrolbot_mast_stage index="1" parent="mast_base_link"
-                                radius="${mast_stage1_radius}" mass="${mass_mast_stage1}"
+                                radius="${mast_stage1_radius}" 
+                                mass="${mass_mast_stage1}"
                                 travel="${mast_stage_travel}"/>
     <xacro:patrolbot_mast_stage index="2" parent="mast_stage1_link"
-                                radius="${mast_stage2_radius}" mass="${mass_mast_stage2}"
+                                radius="${mast_stage2_radius}" 
+                                mass="${mass_mast_stage2}"
                                 travel="${mast_stage_travel}"/>
     <xacro:patrolbot_mast_stage index="3" parent="mast_stage2_link"
-                                radius="${mast_stage3_radius}" mass="${mass_mast_stage3}"
+                                radius="${mast_stage3_radius}" 
+                                mass="${mass_mast_stage3}"
                                 travel="${mast_stage_travel}"/>
 
     <!-- ===================== three-axis gimbal ===================== -->
@@ -89,8 +95,9 @@
         </geometry>
         <material name="aluminium"/>
       </visual>
-      <xacro:inertial_cylinder mass="${mass_gimbal_yaw}" radius="0.028" length="0.020"
-                               xyz="0 0 0.010"/>
+      <xacro:inertial_cylinder mass="${mass_gimbal_yaw}" 
+        radius="0.028" length="0.020"
+        xyz="0 0 0.010"/>
     </link>
 
     <joint name="gimbal_pitch_joint" type="revolute">
@@ -110,8 +117,8 @@
         </geometry>
         <material name="dark_grey"/>
       </visual>
-      <xacro:inertial_box mass="${mass_gimbal_pitch}" x="0.050" y="0.050" z="0.030"
-                          xyz="0 0 0.015"/>
+      <xacro:inertial_box mass="${mass_gimbal_pitch}" 
+          x="0.050" y="0.050" z="0.030" xyz="0 0 0.015"/>
     </link>
 
     <joint name="gimbal_roll_joint" type="revolute">

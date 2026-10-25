@@ -94,7 +94,8 @@
         </geometry>
         <material name="warning_black"/>
       </visual>
-      <xacro:inertial_box mass="${mass_led_bezel}" x="0.020" y="0.160" z="0.400" xyz="0 0 0"/>
+      <xacro:inertial_box mass="${mass_led_bezel}" 
+        x="0.020" y="0.160" z="0.400" xyz="0 0 0"/>
     </link>
 
     <joint name="led_screen_joint" type="fixed">
@@ -111,7 +112,8 @@
         </geometry>
         <material name="led_red"/>
       </visual>
-      <xacro:inertial_box mass="${mass_led_screen}" x="0.008" y="0.150" z="0.360" xyz="0 0 0"/>
+      <xacro:inertial_box mass="${mass_led_screen}" 
+        x="0.008" y="0.150" z="0.360" xyz="0 0 0"/>
     </link>
 
     <!-- ===================== red / blue strobes ===================== -->
@@ -132,7 +134,10 @@
           </geometry>
           <material name="${material}"/>
         </visual>
-        <xacro:inertial_box mass="${mass_strobe}" x="0.050" y="0.040" z="0.020" xyz="0 0 0"/>
+        <xacro:inertial_box 
+          mass="${mass_strobe}" 
+          x="0.050" y="0.040" z="0.020" 
+          xyz="0 0 0"/>
       </link>
     </xacro:macro>
 
