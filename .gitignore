@@ -1,3 +1,6 @@
 build/
 install/
 log/
+
+src/patrolbot_description/launch/__pycache__/
+src/patrolbot_description/world/__pycache__/
