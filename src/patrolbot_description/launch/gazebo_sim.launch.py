@@ -1,26 +1,36 @@
+import os
+
 import launch
 import launch_ros
 from ament_index_python.packages import get_package_share_directory
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution
-from launch_ros.substitutions import FindPackageShare
+
 
 def generate_launch_description():
-    # 获取默认路径
-    robot_name_in_model = "patrolbot"
-    urdf_tutorial_path = get_package_share_directory('fishbot_description')
-    default_model_path = urdf_tutorial_path + '/urdf/fishbot/fishbot.urdf.xacro'
-    default_world_path = urdf_tutorial_path + '/world/custom_room.world.sdf'
-    default_rviz_config_path = urdf_tutorial_path + '/config/rviz/display_model.rviz'
+    robot_name_in_model = 'patrolbot'
 
-    # 为 Launch 声明参数
-    action_declare_arg_mode_path = launch.actions.DeclareLaunchArgument(
+    pkg_share = get_package_share_directory('patrolbot_description')
+    default_model_path = os.path.join(
+        pkg_share, 'urdf', 'patrolbot.urdf.xacro')
+    default_world_path = os.path.join(
+        pkg_share, 'world', 'city_road.world.sdf')
+    gps_fusion_config = os.path.join(
+        pkg_share, 'config', 'gps_fusion.yaml')
+
+    # ---------------------------------------------------------------- args
+    action_declare_arg_model = launch.actions.DeclareLaunchArgument(
         name='model',
-        default_value=str(default_model_path),
-        description='URDF 的绝对路径'
+        default_value=default_model_path,
+        description='机器人 URDF/Xacro 的绝对路径'
+    )
+    action_declare_arg_world = launch.actions.DeclareLaunchArgument(
+        name='world',
+        default_value=default_world_path,
+        description='Gazebo 世界 SDF 的绝对路径'
     )
 
-    # 获取文件内容生成新的参数
+    # xacro 生成 URDF 字符串，robot_state_publisher 同时把它发布到
+    # /robot_description；ros_gz_sim create 从该话题读取模型。
     robot_description = launch_ros.parameter_descriptions.ParameterValue(
         launch.substitutions.Command(
             ['xacro ', launch.substitutions.LaunchConfiguration('model')]),
@@ -33,129 +43,173 @@ def generate_launch_description():
         parameters=[{
             'robot_description': robot_description,
             # 仿真里必须和 Gazebo 用同一个 /clock，否则 TF 时间戳会混用
-            # 系统时间和仿真时间，RViz/slam_toolbox 查询 TF 时容易报错。
+            # 系统时间和仿真时间，RViz/Nav2 查询 TF 时容易报错。
             'use_sim_time': True,
         }]
     )
 
-    # ========== JAZZY 改动：替换 gazebo_ros 为 ros_gz_sim ==========
-    # 启动Gazebo Harmonic，ros_gz_sim自带gz_sim.launch.py
+    # -------------------------------------------------------------- Gazebo
+    # ros_gz_sim 自带 gz_sim.launch.py；-r 立即运行物理。
     launch_gazebo = launch.actions.IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             get_package_share_directory('ros_gz_sim'),
             '/launch/gz_sim.launch.py'
         ]),
         launch_arguments=[
-            ('gz_args', [default_world_path, ' -r'])
+            ('gz_args', [
+                launch.substitutions.LaunchConfiguration('world'),
+                ' -r',
+            ])
         ]
     )
 
-    # # controller_manager，放到事件里，spawn成功之后再启动
-    # controller_manager_node = launch_ros.actions.Node(
-    #     package='controller_manager',
-    #     executable='ros2_control_node',
-    #     parameters=[
-    #         PathJoinSubstitution([
-    #             FindPackageShare('fishbot_description'),
-    #             'config',
-    #             'fishbot_ros2_controller.yaml'
-    #         ])
-    #     ],
-    #     remappings=[
-    #         ('fishbot_diff_drive_controller/odom', 'odom')
-    #     ],
-    #     output='screen'
-    # )
-
-    # spawn 机器人：ros_gz_sim create 替代原来 gazebo_ros spawn_entity.py
+    # 等 Gazebo 世界和 /robot_description 就绪后再生成机器人。
+    # 出生点就是 city_road 应急车道起点：world (0, 0)，朝向 +X。
     spawn_entity_node = launch_ros.actions.Node(
         package='ros_gz_sim',
         executable='create',
         arguments=[
             '-topic', '/robot_description',
             '-name', robot_name_in_model,
+            '-x', '0.0',
+            '-y', '0.0',
+            '-z', '0.02',
+        ],
+        output='screen'
+    )
+    delayed_spawn = launch.actions.TimerAction(
+        period=5.0,
+        actions=[spawn_entity_node]
+    )
+
+    # --------------------------------------------------------- controllers
+    spawner_joint_state = launch_ros.actions.Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager-timeout', '60.0',
         ],
         output='screen'
     )
 
-    # # 2. spawn diff_drive控制器！remap写在这里！
-    # spawn_diff_drive = launch_ros.actions.Node(
-    #     package="controller_manager",
-    #     executable="spawner",
-    #     arguments=[
-    #         "fishbot_diff_drive_controller",
-    #         "--controller-manager", "/controller_manager",
-    #         "--controller-ros-args",
-    #         "--ros-args "
-    #         "--remap /fishbot_diff_drive_controller/cmd_vel:=/cmd_vel_01by_ros2control",
-    #         "--remap /fishbot_diff_drive_controller/odom:=/odom_01by_ros2control",
-    #     ],
-    #     output="screen",
-    # )
-
-
-    # 加载控制器
-    load_joint_state_controller = launch.actions.ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'fishbot_joint_state_broadcaster'],
+    spawner_diff_drive = launch_ros.actions.Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'diff_drive_controller',
+            '--controller-manager-timeout', '60.0',
+        ],
         output='screen'
     )
 
-    load_fishbot_diff_drive_controller = launch.actions.ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'fishbot_diff_drive_controller'],
-        output='screen'
-    )
-
+    # --------------------------------------------------------------- bridge
     gz_bridge_node = launch_ros.actions.Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            # 仿真时钟：use_sim_time 的节点需要它，否则时钟恒为 0
-            # （表现：odom 因 publish_rate 节流永不发布、cmd_vel_timeout 永不过期、TF 时间戳为 0）
+            # 仿真时钟：use_sim_time 的节点都需要它，否则时钟恒为 0
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-            '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            # 多线激光雷达点云（32 线默认 / 16 线可选）。不直接桥接 /scan：
-            # 多线时它只含中间一条线束。Nav2 请用 pointcloud_to_laserscan
-            # 从点云生成水平 /scan，见 urdf/README.md 第 8 节。
+            # Gazebo IMU -> /imu/data（与 sensors.xacro 的话题一致）
+            '/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU',
+            # Gazebo navsat -> sensor_msgs/NavSatFix，供 navsat_transform
+            '/gps/fix@sensor_msgs/msg/NavSatFix[gz.msgs.NavSat',
+            # 多线激光雷达点云：/scan 是 LaserScan，/scan/points 是
+            # PointCloud2。Nav2 用 pointcloud_to_laserscan 从点云生成
+            # 水平 /scan，见 doc/1.imp/0.urdf.generate.md 第 8 节。
             '/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
-            # 注意：**不要同时开两份 joint_states**，容易造成 TF 抖动！
-            # 使用ros2_control joint_state_broadcaster时，请注释掉下面这一行
-            # '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
-            '/camera_sensor/image@sensor_msgs/msg/Image[gz.msgs.Image',
-            '/camera_sensor/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
-            '/camera_sensor/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            # 开启深度相机点云才启用下面这行
-            '/camera_sensor/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
-            # 
-            '/gz/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
-            # 支持 gz.msgs.Twist ↔ geometry_msgs/msg/TwistStamped 转换
-            '/cmd_vel@geometry_msgs/msg/TwistStamped[gz.msgs.Twist',
+            # 全景相机
+            '/camera/panorama/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/panorama/image_raw/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            # 云台相机
+            '/camera/gimbal/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/gimbal/image_raw/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            # 底盘速度由 diff_drive_controller 订阅
+            # /diff_drive_controller/cmd_vel 后写入 ros2_control，
+            # 不再直接桥接 Gazebo 的 /cmd_vel。
+            #
+            # 不要桥接 /joint_states：控制器已经在发
+            # joint_state_broadcaster 的结果，两份 joint_states 会让 TF 抖动。
         ],
         output='screen'
     )
 
- 
+    # ------------------------------------------------------ GPS / localization
+    # 数据流：
+    #   Gazebo navsat -> /gps/fix -> navsat_transform -> /odometry/gps
+    #     -> global EKF -> map -> odom -> base_footprint
+    # local EKF 只融合轮速 + IMU，负责 odom -> base_footprint；
+    # global EKF 融合轮速 + IMU + GPS，负责 map -> odom。
+    ekf_local = launch_ros.actions.Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node_odom',
+        parameters=[gps_fusion_config, {'use_sim_time': True}],
+        remappings=[('odometry/filtered', 'odometry/local')],
+        output='screen'
+    )
+
+    ekf_global = launch_ros.actions.Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node_map',
+        parameters=[gps_fusion_config, {'use_sim_time': True}],
+        remappings=[('odometry/filtered', 'odometry/global')],
+        output='screen'
+    )
+
+    navsat_transform_node = launch_ros.actions.Node(
+        package='robot_localization',
+        executable='navsat_transform_node',
+        name='navsat_transform',
+        parameters=[gps_fusion_config, {'use_sim_time': True}],
+        remappings=[
+            ('imu', '/imu/data'),
+            ('gps/fix', '/gps/fix'),
+            ('odometry/filtered', '/odometry/global'),
+            ('odometry/gps', '/odometry/gps'),
+            ('gps/filtered', '/gps/filtered'),
+        ],
+        output='screen'
+    )
+
     ld = launch.LaunchDescription([
-        action_declare_arg_mode_path,
+        action_declare_arg_model,
+        action_declare_arg_world,
         robot_state_publisher_node,
         launch_gazebo,
-        spawn_entity_node,
-        # spawn_diff_drive,
+        delayed_spawn,
         gz_bridge_node,
-        # 事件链：spawn成功 →  加载joint_state → 加载diff drive
+        # 事件链：spawn 成功 -> joint_state_broadcaster -> diff_drive_controller
+        # -> GPS 融合节点。local EKF 启动后才会建立 odom -> base_footprint；
+        # navsat_transform 的 delay: 3.0 就是留给它建立 TF 再做天线杆臂补偿。
         launch.actions.RegisterEventHandler(
             event_handler=launch.event_handlers.OnProcessExit(
                 target_action=spawn_entity_node,
-                on_exit=[load_joint_state_controller],
+                on_exit=[spawner_joint_state],
             )
         ),
         launch.actions.RegisterEventHandler(
             event_handler=launch.event_handlers.OnProcessExit(
-                target_action=load_joint_state_controller,
-                on_exit=[load_fishbot_diff_drive_controller],
+                target_action=spawner_joint_state,
+                on_exit=[spawner_diff_drive],
             )
-        ), 
+        ),
+        launch.actions.RegisterEventHandler(
+            event_handler=launch.event_handlers.OnProcessExit(
+                target_action=spawner_diff_drive,
+                on_exit=[
+                    ekf_local,
+                    # 先让 local EKF 建立 odom -> base_footprint，再启动
+                    # global EKF（它要靠这条 TF 发 map -> odom 并做 GPS
+                    # 杆臂补偿）；最后启动 navsat_transform（它本身还有
+                    # delay: 3.0 s）。
+                    launch.actions.TimerAction(
+                        period=3.0, actions=[ekf_global]),
+                    launch.actions.TimerAction(
+                        period=6.0, actions=[navsat_transform_node]),
+                ],
+            )
+        ),
     ])
     return ld
-

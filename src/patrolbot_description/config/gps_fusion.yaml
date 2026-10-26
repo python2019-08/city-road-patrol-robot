@@ -1,0 +1,157 @@
+# GPS / GNSS fusion for the city_road world.
+#
+# Data flow:
+#   Gazebo navsat (gnss_link) -> /gps/fix -> navsat_transform_node
+#     -> /odometry/gps -> global EKF -> map -> odom -> base_footprint
+#
+# The local EKF publishes odom -> base_footprint; the global EKF publishes
+# map -> odom.  diff_drive_controller must therefore NOT publish odom ->
+# base_footprint (see ros2_control.yaml: enable_odom_tf: false).
+#
+# Both EKFs use two_d_mode because this robot drives on a flat road.
+# Topic names are absolute so they do not depend on the launch namespace.
+
+ekf_filter_node_odom:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+
+    # Wait up to 50 ms for TF lookups (e.g. when the local EKF publishes
+    # odom->base_footprint just after the global EKF needs it).
+    transform_timeout: 0.05
+    transform_timeout_odom_bl: 0.05
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom
+
+    # diff_drive_controller: vx and yaw rate from the wheel encoders
+    odom0: /diff_drive_controller/odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+
+    # Gazebo IMU: roll/pitch/yaw + yaw rate.  Accelerations are NOT fused:
+    # the simulated accelerometer has a small constant bias, and integrating
+    # it makes the local EKF drift sideways while the robot is stationary.
+    #
+    # yaw is fused as an absolute measurement because the Gazebo IMU is
+    # world-referenced (ENU): yaw 0 faces east, which is exactly how the
+    # map frame is defined.  Without it, yaw is unobservable and the
+    # gyro noise makes the estimate wander.
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  true,  true,  true,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+
+ekf_filter_node_map:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+
+    # odom->base_footprint comes from the local EKF at its own timestamp;
+    # without a timeout this lookup fails every few cycles
+    # ("Could not obtain transform from odom->base_footprint") and the
+    # global EKF skips publishing map->odom.
+    transform_timeout: 0.05
+    transform_timeout_odom_bl: 0.05
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: map
+
+    odom0: /diff_drive_controller/odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+
+    # navsat_transform_node output: only x/y are fused; z comes from
+    # zero_altitude and the wheel odometry.
+    odom1: /odometry/gps
+    odom1_config: [true,  true,  false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    odom1_differential: false
+    odom1_relative: false
+    odom1_queue_size: 10
+
+    # Same IMU configuration as the local EKF (absolute yaw, no linear
+    # acceleration).  Here the absolute yaw is what keeps map->odom from
+    # wandering: GPS gives position only, so without an absolute heading
+    # the map-frame yaw is unobservable and drifts with the gyro noise.
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  true,  true,  true,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+
+navsat_transform:
+  ros__parameters:
+    frequency: 30.0
+    delay: 3.0
+
+    # Simulation has no magnetic declination.  On the real robot, set this
+    # for the site and set yaw_offset so that IMU yaw=0 faces east.
+    magnetic_declination_radians: 0.0
+    yaw_offset: 0.0
+
+    # 2D patrol: do not let GPS altitude noise enter the filter.
+    zero_altitude: true
+
+    # The EKF owns map->odom; do not add a second map->utm transform.
+    broadcast_cartesian_transform: false
+    broadcast_utm_transform: false
+
+    publish_filtered_gps: true
+    use_odometry_yaw: false
+
+    # Fixed datum, identical to <spherical_coordinates> in
+    # city_road.world.sdf.  This makes the map origin coincide with the
+    # world origin, so /odometry/gps x/y can be compared directly with the
+    # world coordinates.  The third value is the datum yaw (rad).
+    wait_for_datum: true
+    datum: [31.2304, 121.4737, 0.0]
+
+    # Must stay false (UTM), even though the world is a flat local ENU plane.
+    #
+    # navsat_transform converts every fix in gpsFixCallback(), including the
+    # ones that arrive before the datum has been set.  With
+    # use_local_cartesian: true, gps_local_cartesian_ still has the origin
+    # (0, 0, 0) at that moment, so the first fix becomes an ECEF-scale
+    # coordinate (about +4.65e6, +3.28e6 m).  It is stored as
+    # latest_cartesian_pose_ and published once as /odometry/gps, which
+    # throws the global EKF about 450 km away for ~10 s.
+    #
+    # In UTM mode that same early fix is rejected by GeographicLib (zone is
+    # still 0 = UPS, so it throws "more than 20d from N pole" and the sample
+    # is dropped); one ERROR line is logged, then the datum is set and
+    # /odometry/gps starts at the datum (~0, 0).  The sub-metre difference
+    # between UTM and LocalCartesian is irrelevant here.
+    use_local_cartesian: false

@@ -6,8 +6,9 @@
     xacro patrolbot.urdf.xacro > /tmp/patrolbot.urdf
     xacro patrolbot.urdf.xacro lidar_lines:=16 lidar_samples:=360 controllers_file:=/abs/path.yaml
 
-  The model targets ROS 2 Jazzy + Gazebo Harmonic.  See README.md in this
-  directory for the world plugins and bridge topics the simulation needs.
+  The model targets ROS 2 Jazzy + Gazebo Harmonic.  See
+  doc/1.imp/0.urdf.generate.md for the world plugins and bridge topics the
+  simulation needs.
 -->
 <robot name="patrolbot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 

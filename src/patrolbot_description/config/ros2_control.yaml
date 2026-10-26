@@ -9,6 +9,9 @@
 #   /diff_drive_controller/cmd_vel   geometry_msgs/msg/TwistStamped  (input)
 #   /diff_drive_controller/odom      nav_msgs/msg/Odometry           (output)
 #   /joint_states                    sensor_msgs/msg/JointState
+#
+# TF: odom -> base_footprint is published by the local EKF in
+# gps_fusion.yaml, not by diff_drive_controller (enable_odom_tf: false).
 controller_manager:
   ros__parameters:
     update_rate: 100  # Hz
@@ -42,7 +45,11 @@ diff_drive_controller:
     open_loop: false
     position_feedback: true
 
-    enable_odom_tf: true
+    # The local EKF in gps_fusion.yaml publishes odom -> base_footprint.
+    # Keep this false while gps_fusion is running; otherwise two nodes
+    # publish the same transform and TF jitters or reports TF_OLD_DATA.
+    # If you deliberately run without gps_fusion, set it back to true.
+    enable_odom_tf: false
     cmd_vel_timeout: 0.5
     publish_limited_velocity: false
     velocity_rolling_window_size: 10

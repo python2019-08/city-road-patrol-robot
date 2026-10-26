@@ -31,7 +31,7 @@
          head still blanks the low beams around the rear (about +-21 deg
          on the horizontal plane when the mast is collapsed); re-check the
          exact 3D self-occlusion against the selected sensor.  See
-         README.md. -->
+         doc/1.imp/0.urdf.generate.md. -->
     <joint name="lidar_joint" type="fixed">
       <parent link="body_link"/>
       <child link="lidar_link"/>
@@ -196,7 +196,10 @@
             <horizontal>
               <noise type="gaussian">
                 <mean>0.0</mean>
-                <stddev>0.02</stddev>
+                <!-- Gazebo Harmonic 8.15 applies this stddev to latitude /
+                     longitude in DEGREES, although the SDF spec says metres.
+                     2e-7 deg is about 0.02 m here; 0.02 would mean ~2 km. -->
+                <stddev>2.0e-7</stddev>
               </noise>
             </horizontal>
             <vertical>
